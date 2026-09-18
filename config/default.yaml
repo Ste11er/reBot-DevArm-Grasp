@@ -1,16 +1,20 @@
 camera:
-  type: orbbec_gemini2
+  type: realsense_d405        # 实际接的是 RealSense D405 (USB: Intel 8086:0b5b)；orbbec_gemini2 未连接
   serial: null
-  color_width: 1280
+  color_width: 1280           # D405 支持 1280x720@30 RGB-D（已实测）
   color_height: 720
   fps: 30
 
 calibration:
   aruco:
-    marker_length_m: 0.1
+    marker_length_m: 0.097
     dict_id: 0
     target_marker_id: 0
   hand_eye_method: TSAI
+  # 手眼标定模式：
+  #   eye_in_hand — 相机装在机械臂末端，随臂运动（标定板固定）
+  #   eye_to_hand — 相机固定在桌面/基座（标定板装在末端随臂运动）
+  hand_eye_mode: "eye_to_hand"
   hand_eye_compensation_m:
     x: 0.00
     y: 0.0
@@ -45,7 +49,7 @@ robot:
 
 yolo:
   model_name: "yoloe-26l-seg.pt"
-  device: "cpu"
+  device: "xpu"               # YOLO is compute-bound: Intel XPU is 3-5x faster than CPU
   use_world: true
   custom_classes:
     - "yellow banana"
@@ -65,6 +69,8 @@ grasp_pipeline:
 
 graspnet:
   checkpoint: "checkpoint-rs.tar"
+  device: "cpu"               # launch-bound workload (batch=1, thousands of tiny kernels):
+                              # CPU beats XPU here (~1.6s vs ~2.7s); "xpu"/"cuda" also work
   num_point: 20000
   collision_thresh: 0.01
   min_depth: 0.05

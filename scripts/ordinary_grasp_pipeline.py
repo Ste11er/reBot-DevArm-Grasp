@@ -66,7 +66,10 @@ def main():
     grasp_cfg = cfg.get("grasp_pipeline", {}).get("grasp", {})
 
     model_name = yolo_cfg.get("model_name", "yoloe-26s-seg.pt")
-    device = yolo_cfg.get("device", "cpu")
+    device = yolo_cfg.get("device") or "auto"
+    if device == "auto":
+        from utils.common_utils import resolve_torch_device
+        device = str(resolve_torch_device())
     use_world = bool(yolo_cfg.get("use_world", False))
     custom_classes = list(yolo_cfg.get("custom_classes", ["cup"]))
     conf_thres = float(det_cfg.get("conf_threshold", 0.25))

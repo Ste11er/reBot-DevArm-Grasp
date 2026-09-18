@@ -268,6 +268,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retreat-offset", type=float, default=None, help="meters")
     parser.add_argument("--min-base-z", type=float, default=None, help="minimum executable TCP z in base frame, meters")
     parser.add_argument("--no-open3d", action="store_true", help="do not open Open3D after inference")
+    parser.add_argument("--device", default=None, help="torch device for GraspNet (xpu, cuda, cpu)")
     parser.add_argument(
         "--open3d-grasps",
         choices=("final", "bbox", "pre-bbox"),
@@ -336,8 +337,10 @@ def main() -> int:
 
         cam_type = str(cam_cfg.get("type", "")).lower()
         T_hand_eye, hand_eye_mode = load_hand_eye(PROJECT_ROOT, cam_type)
-        if T_hand_eye is None or hand_eye_mode != "eye_in_hand":
+        if T_hand_eye is None:
             print("[WARN] Hand-eye calibration unavailable; grasp execution disabled")
+        elif hand_eye_mode not in ("eye_in_hand", "eye_to_hand"):
+            print(f"[WARN] Unknown hand-eye mode {hand_eye_mode!r}; grasp execution disabled")
             T_hand_eye = None
 
         print("=== Load models ===")
@@ -353,7 +356,11 @@ def main() -> int:
             extra_classes=args.extra_yolo_class,
         )
         last_target_status = "YOLO disabled: full-scene GraspNet" if yolo_model is None else "target detector warming up..."
-        net = graspnet_utils.build_net(args.checkpoint, args.num_view)
+        net = graspnet_utils.build_net(
+            args.checkpoint,
+            args.num_view,
+            device=graspnet_cfg.get("device") or args.device,
+        )
 
         print("=== Init robot ===")
         selected = selected_arm_config(robot_cfg.get("repo_root"))
@@ -496,7 +503,9 @@ def main() -> int:
                     print("[G] Hand-eye calibration unavailable")
                     continue
 
-                T_cam2base = compose_cam_to_base_transform(grasp_driver.get_tcp_pose(), T_hand_eye, cfg)
+                T_cam2base = compose_cam_to_base_transform(
+                    grasp_driver.get_tcp_pose(), T_hand_eye, cfg, mode=hand_eye_mode,
+                )
                 selected = _select_executable_grasp(
                     ik_checker,
                     result.grasps,

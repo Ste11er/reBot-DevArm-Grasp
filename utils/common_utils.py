@@ -5,6 +5,30 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import numpy as np
+import torch
+
+
+def resolve_torch_device(preferred: Optional[str] = None) -> torch.device:
+    """Return the best available torch device for this machine.
+
+    Prefers Intel XPU, then CUDA, then CPU. ``preferred`` may be 'xpu',
+    'cuda', 'cpu' or None; a preferred backend that is unavailable falls
+    back to CPU with a warning.
+    """
+    preferred = (preferred or "").lower()
+    if preferred in ("xpu", "auto", ""):
+        if torch.xpu.is_available():
+            return torch.device("xpu")
+        if preferred == "xpu":
+            print("[WARN] XPU requested but torch.xpu is unavailable; falling back to CPU")
+            return torch.device("cpu")
+    if preferred.startswith("cuda") or preferred in ("auto", ""):
+        if torch.cuda.is_available():
+            return torch.device(preferred if preferred.startswith("cuda") else "cuda")
+        if preferred.startswith("cuda"):
+            print("[WARN] CUDA requested but unavailable; falling back to CPU")
+            return torch.device("cpu")
+    return torch.device(preferred or "cpu")
 
 
 def tensor_to_numpy(value: Any) -> Optional[np.ndarray]:

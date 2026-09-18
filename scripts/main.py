@@ -63,8 +63,8 @@ def _move_ready(controller: RebotArmEndPose, ready_cfg: dict[str, Any]) -> None:
     _wait_motion(controller, duration)
 
 
-def _cam_to_base(T_hand_eye: np.ndarray, grasp_driver: GraspDriver, cfg: dict[str, Any]) -> np.ndarray:
-    return compose_cam_to_base_transform(grasp_driver.get_tcp_pose(), T_hand_eye, cfg)
+def _cam_to_base(T_hand_eye: np.ndarray, grasp_driver: GraspDriver, cfg: dict[str, Any], mode: str) -> np.ndarray:
+    return compose_cam_to_base_transform(grasp_driver.get_tcp_pose(), T_hand_eye, cfg, mode=mode)
 
 
 def _execute_grasp(
@@ -149,6 +149,13 @@ def _print_best_grasp(grasp: GraspPose) -> None:
     print(f"  tcp_rpy={rotation_matrix_to_euler_zyx(tcp_rotation).tolist()}")
 
 
+def _resolve_device(value):
+    from utils.common_utils import resolve_torch_device
+    if value in (None, "auto"):
+        return str(resolve_torch_device())
+    return value
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ordinary short-axis grasp demo")
     parser.add_argument("--config", default="config/default.yaml")
@@ -186,6 +193,7 @@ def main() -> int:
     rebotarm: Optional[RebotArm] = None
     grasp_driver: Optional[GraspDriver] = None
     T_hand_eye: Optional[np.ndarray] = None
+    T_hand_eye_mode: Optional[str] = None
     yolo_opts: dict[str, Any] = {}
     robot_ready = False
 
@@ -196,9 +204,17 @@ def main() -> int:
 
         cam_type = str(cam_cfg.get("type", "")).lower()
         T_hand_eye, hand_eye_mode = load_hand_eye(PROJECT_ROOT, cam_type)
-        if T_hand_eye is None or hand_eye_mode != "eye_in_hand":
+        if T_hand_eye is None:
             print("[WARN] Hand-eye calibration unavailable; grasp execution disabled")
+        elif hand_eye_mode not in ("eye_in_hand", "eye_to_hand"):
+            print(f"[WARN] Unknown hand-eye mode {hand_eye_mode!r}; grasp execution disabled")
             T_hand_eye = None
+        elif hand_eye_mode == "eye_to_hand":
+            # 相机固定: T_cam2base 是常量, 只需计算一次
+            T_hand_eye_mode = "eye_to_hand"
+            print(f"[Hand-eye] eye_to_hand (camera fixed); T_cam2base is constant")
+        else:
+            T_hand_eye_mode = "eye_in_hand"
 
         yolo_cfg = cfg.get("yolo", {})
         gp_cfg = cfg.get("grasp_pipeline", {})
@@ -246,7 +262,7 @@ def main() -> int:
                 last_results = model.predict(
                     color_bgr,
                     verbose=False,
-                    device=yolo_opts.get("device", "cpu"),
+                    device=_resolve_device(yolo_opts.get("device")),
                     conf=float(yolo_opts.get("conf", 0.25)),
                     iou=float(yolo_opts.get("iou", 0.45)),
                 )
@@ -281,7 +297,7 @@ def main() -> int:
                 snap_results = model.predict(
                     snap_color,
                     verbose=False,
-                    device=yolo_opts.get("device", "cpu"),
+                    device=_resolve_device(yolo_opts.get("device")),
                     conf=float(yolo_opts.get("conf", 0.25)),
                     iou=float(yolo_opts.get("iou", 0.45)),
                 )
@@ -303,7 +319,7 @@ def main() -> int:
                     print("[G] Hand-eye calibration unavailable")
                     continue
 
-                T_cam2base = _cam_to_base(T_hand_eye, grasp_driver, cfg)
+                T_cam2base = _cam_to_base(T_hand_eye, grasp_driver, cfg, mode=T_hand_eye_mode)
                 grasp6d, pre6d = transform_grasp_pose_to_base(
                     best.position,
                     best.tcp_rotation,

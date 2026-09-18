@@ -1,3 +1,12 @@
+# Legacy conda environment (CUDA-oriented).
+#
+# NOTE: The primary supported setup is now uv + Intel XPU (torch 2.8.0+xpu).
+# From the project root run:
+#     uv sync
+# which installs torch/torchvision/torchaudio from the PyTorch XPU index and
+# resolves to Intel GPU (XPU) capable builds. See README section on XPU.
+#
+# This file is kept for reference / CUDA machines:
 name: rebotarm
 channels:
   - conda-forge

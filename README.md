@@ -59,7 +59,7 @@ url: https://wiki.seeedstudio.com/rebot_arm_b601_dm_grasping_demo/
 - 📷 **Depth Perception** — Supports RGB-D depth cameras such as Orbbec Gemini 2 and Intel RealSense D435i / D405
 - 🔍 **Object Detection** — YOLO-based recognition with open-vocabulary custom class support
 - 📐 **Pose Estimation** — OBB minimum-area rectangle short axis for gripper orientation, depth quantile for grasp height estimation
-- 🔄 **Coordinate Transformation** — TSAI hand-eye calibration (Eye-in-Hand), transforming camera frame grasp points to robot base frame
+- 🔄 **Coordinate Transformation** — TSAI hand-eye calibration supporting both Eye-in-Hand (camera on arm) and Eye-to-Hand (camera fixed on desk), transforming camera frame grasp points to robot base frame
 - 🦾 **Motion Execution** — reBotArm_control_py IK + trajectory controller with built-in gripper force control state machine
 
 ---
@@ -120,6 +120,13 @@ If you want to use a different environment name, replace `rebotarm` in the comma
 
 ```bash
 git clone https://github.com/vectorBH6/reBotArm_control_py.git sdk/reBotArm_control_py
+```
+
+With the uv setup, nothing else is needed: `pyproject.toml` already declares `rebotarm-control-py` as an editable path dependency pointing at `sdk/reBotArm_control_py`, so `uv sync` installs it automatically. (The packaging fix below is already applied in this repo's checkout.)
+
+For pip/conda users, install it editable:
+
+```bash
 cd sdk/reBotArm_control_py
 pip install -e .
 cd ../..
@@ -224,6 +231,28 @@ If the system needs the complete RealSense toolkit or udev rules, please refer t
 ### Step 5. Configure GraspNet (optional)
 
 To achieve more accurate grasp pose estimation for objects, this project adapts [graspnet-baseline](https://github.com/graspnet/graspnet-baseline) to improve robotic arm grasping performance.
+
+#### Intel XPU / CPU-only machines (no CUDA required)
+
+This repository patches `sdk/graspnet-baseline/pointnet2/pointnet2_utils.py`, `sdk/graspnet-baseline/knn/knn_modules.py` and adds `sdk/graspnet-baseline/pointnet2/pt_ops_reference.py`: when the CUDA extensions (`pointnet2._ext`, `knn_pytorch`) are not built, the model automatically falls back to pure-PyTorch operators that run on Intel XPU or CPU — **no `nvcc` needed**.
+
+Recommended device split (`config/default.yaml`, already set): **YOLO on `xpu`** (compute-bound, 3-5x faster than CPU there) and **GraspNet on `cpu`** (launch-bound at batch=1 — thousands of tiny kernels run faster on CPU; ~1.6 s per frame with the auto-tuned thread count). Both can run concurrently without competing for the same device.
+
+To use GraspNet, just clone the two repos and install the API:
+
+```bash
+cd sdk
+git clone https://github.com/graspnet/graspnet-baseline.git
+git clone https://github.com/graspnet/graspnetAPI.git
+cd graspnetAPI
+pip install --no-deps .        # skip the stale sklearn/numpy pins
+pip install pywavefront autolab_core autolab-perception scikit-image trimesh transforms3d cvxopt dill grasp-nms h5py
+cd ../..
+```
+
+You still need to download a pretrained checkpoint (e.g. `checkpoint-rs.tar`) into `sdk/graspnet-baseline/checkpoints/`.
+
+#### CUDA machines (original workflow, faster)
 
 The GraspNet `pointnet2` / `knn` extensions require a CUDA compiler. Before starting, confirm that `nvcc` is available in the current environment and check that the CUDA version reported by `nvcc` matches the CUDA version used to build PyTorch:
 
@@ -447,6 +476,7 @@ Pure YOLO detection demonstration with real-time display of detection boxes and 
 | `camera.type` | `realsense_d435i`<br/>`realsense_d405`<br/>`orbbec_gemini2` | **Camera Type**: Specifies the camera hardware connected to the current system. |
 | `camera.serial` | `string` / `null` | **Device Serial Number**: Specifies the device SN number. Set to `null` to use the first available device detected by the system. |
 | `calibration.aruco.marker_length_m` | `float` | **ArUco Marker Size**: The actual physical side length of the ArUco calibration marker used for hand-eye calibration, in **meters (m)**. |
+| `calibration.hand_eye_mode` | `eye_in_hand`<br/>`eye_to_hand` | **Hand-Eye Calibration Mode**: `eye_in_hand` — camera mounted on the end effector and moves with the arm (marker board fixed); `eye_to_hand` — camera fixed on the desk/base observing the arm (marker board mounted on the gripper). Must match your physical setup. |
 | `calibration.hand_eye_compensation_m` | `array` | **Hand-Eye Calibration Translation Compensation**: XYZ manual translation compensation (format `[X, Y, Z]`) executed in the **robot base frame** after hand-eye calibration is complete, in **meters (m)**. If all three values are `0.0`, the compensation matrix is the identity matrix. |
 
 ---

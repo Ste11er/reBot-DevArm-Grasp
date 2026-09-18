@@ -9,3 +9,4 @@ sdk/*
 models/
 *.npz
 *voice*
+.venv/

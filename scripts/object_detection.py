@@ -52,7 +52,10 @@ def main():
 
     yolo_cfg     = cfg.get("yolo", {})
     model_name   = yolo_cfg.get("model_name", "yoloe-26s-seg.pt")
-    device       = yolo_cfg.get("device", "cpu")
+    device       = yolo_cfg.get("device") or "auto"
+    if device == "auto":
+        from utils.common_utils import resolve_torch_device
+        device = str(resolve_torch_device())
     use_world    = yolo_cfg.get("use_world", False)
     custom_classes = yolo_cfg.get("custom_classes", ["person", "cup", "cell phone"])
 

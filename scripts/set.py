@@ -180,6 +180,13 @@ def _render_display(
     return display
 
 
+def _resolve_device(value):
+    from utils.common_utils import resolve_torch_device
+    if value in (None, "auto"):
+        return str(resolve_torch_device())
+    return value
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Place banana into box demo")
     parser.add_argument("--config", default="config/default.yaml")
@@ -277,7 +284,7 @@ def main() -> int:
                 last_results = model.predict(
                     color_bgr,
                     verbose=False,
-                    device=yolo_opts.get("device", "cpu"),
+                    device=_resolve_device(yolo_opts.get("device")),
                     conf=float(yolo_opts.get("conf", 0.25)),
                     iou=float(yolo_opts.get("iou", 0.45)),
                 )
@@ -324,7 +331,7 @@ def main() -> int:
                 snap_results = model.predict(
                     snap_color,
                     verbose=False,
-                    device=yolo_opts.get("device", "cpu"),
+                    device=_resolve_device(yolo_opts.get("device")),
                     conf=float(yolo_opts.get("conf", 0.25)),
                     iou=float(yolo_opts.get("iou", 0.45)),
                 )

@@ -296,9 +296,11 @@ class GravityCompController:
 # Main flow.
 # ==========================================
 def main():
-    parser = argparse.ArgumentParser(description="Eye-in-hand calibration data collection")
+    parser = argparse.ArgumentParser(description="Hand-eye calibration data collection (eye-in-hand / eye-to-hand)")
     parser.add_argument("--manual", action="store_true",
                         help="manual mode: gravity compensation; move the arm by hand and press Enter to capture")
+    parser.add_argument("--mode", choices=("eye_in_hand", "eye_to_hand"), default=None,
+                        help="hand-eye mode; default: calibration.hand_eye_mode from config/default.yaml")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -308,6 +310,9 @@ def main():
     calib_dir  = root / "config" / "calibration" / cam_type
     aruco_cfg  = cfg["calibration"]["aruco"]
     he_method  = cfg["calibration"].get("hand_eye_method", "TSAI")
+    he_mode    = args.mode or cfg["calibration"].get("hand_eye_mode", "eye_in_hand")
+    if he_mode not in ("eye_in_hand", "eye_to_hand"):
+        raise ValueError(f"无效的 hand_eye_mode: {he_mode!r}")
     save_path  = calib_dir / "hand_eye.npz"
 
     # Camera.
@@ -319,7 +324,8 @@ def main():
     )
 
     # Calibrator.
-    calibrator = HandEyeCalibrator(CalibMode.EYE_IN_HAND, method=he_method)
+    calib_mode = CalibMode.EYE_TO_HAND if he_mode == "eye_to_hand" else CalibMode.EYE_IN_HAND
+    calibrator = HandEyeCalibrator(calib_mode, method=he_method)
 
     # Robot.
     mode_str = "manual (gravity compensation)" if args.manual else f"auto ({len(CALIB_POSES_XYZ)} preset poses)"
@@ -342,7 +348,7 @@ def main():
     }
     result_saved = False
 
-    print(f"\n=== Eye-in-Hand Calibration ===")
+    print(f"\n=== Hand-Eye Calibration ({he_mode}) ===")
     print(f"Camera: {cam_type}  |  Mode: {mode_str}  |  Solver: {he_method}")
     print(f"ArUco size: {aruco_cfg['marker_length_m']*100:.0f}cm  |  Output: {save_path}")
     print()

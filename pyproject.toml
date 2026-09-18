@@ -1,0 +1,104 @@
+[project]
+name = "rebot-grasp"
+version = "0.1.0"
+description = "reBotarm visual grasping (Intel XPU build)"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    # ---- torch with Intel GPU (XPU) support ----
+    "torch==2.8.0+xpu",
+    "torchvision==0.23.0+xpu",
+    "torchaudio==2.8.0+xpu",
+    # torch 的传递依赖必须显式列出：uv 的 sources 映射只对直接依赖生效，
+    # 而 pytorch-triton-xpu 在 PyPI 上是 quarantined（无文件），只能从 XPU 源获取
+    "pytorch-triton-xpu==3.4.0",
+
+    # ---- core ----
+    # NOTE: numpy>=2.2 是 pin==3.9.0 (Pinocchio) 在 py3.10 的硬性要求（经 cmeel-boost 1.89）。
+    # 原 conda 环境的 numpy<2.0 与 PyPI 的 pin 冲突，故同步升级 opencv 到 numpy2 兼容版本。
+    "numpy>=2.2,<2.3",
+    "scipy>=1.10",
+    "matplotlib>=3.10.0",
+    "pyyaml>=6.0",
+    "pin==3.9.0",                     # Pinocchio (conda pinocchio==3.9.0 equivalent)
+    "opencv-python==4.12.0.88",       # numpy 2.x compatible; ArUco now in main opencv
+    "opencv-contrib-python==4.12.0.88",
+    "ultralytics>=8.4.111",           # first line with device='xpu' support in select_device (8.4.35 was yanked anyway)
+    "pyrealsense2>=2.54",
+    "pyorbbecsdk2>=2.1.2",            # provides `import pyorbbecsdk`
+    "meshcat>=0.3.2",
+    "motorbridge>=0.4.9",
+
+    # ---- robot arm SDK (local checkout, see sdk/reBotArm_control_py) ----
+    "rebotarm-control-py",
+
+    # ---- graspnet runtime (optional, sdk/graspnet-baseline not required to import) ----
+    "open3d>=0.19",
+    "tensorboard",
+    "pillow",
+    "tqdm",
+
+    # ---- graspnetAPI (local checkout sdk/graspnetAPI; --no-deps 等价: 只列它运行时真正需要的) ----
+    "graspnetapi",
+    "trimesh",
+    "transforms3d>=0.3.1",
+    "pywavefront",
+    "autolab_core",
+    "autolab-perception",
+    "scikit-image",
+    "cvxopt",
+    "dill",
+    "grasp-nms",
+    "h5py",
+
+    # ---- voice (optional) ----
+    # NOTE: funasr 1.1.3 源码含 np.float/np.int 等 numpy1 专有别名，
+    # numpy2 下 voice 功能可能报错；如需使用请降级 numpy 或升级 funasr。
+    "funasr==1.1.3",
+    "modelscope",
+    "soundfile",
+]
+
+[project.optional-dependencies]
+robot = [
+    # reBotArm_control_py: install from local checkout after cloning, see README Step 3:
+    #   uv pip install -e ./sdk/reBotArm_control_py
+]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-xpu" }
+torchvision = { index = "pytorch-xpu" }
+torchaudio = { index = "pytorch-xpu" }
+# torch XPU 传递依赖：PyPI 上该包被隔离（无文件），必须从 PyTorch XPU 源获取
+pytorch-triton-xpu = { index = "pytorch-xpu" }
+# 机械臂 SDK：本地 sdk/ 目录 checkout（editable 安装）
+rebotarm-control-py = { path = "sdk/reBotArm_control_py", editable = true }
+# graspnetAPI：本地 sdk/graspnetAPI（纯 Python 包）
+graspnetapi = { path = "sdk/graspnetAPI" }
+
+[tool.uv]
+# This project only targets Linux + Intel XPU; restrict resolution accordingly
+# (torch XPU wheels have no macOS/Windows-Linux-universal metadata).
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+# pyorbbecsdk2 在 python<3.12 上元数据声明 numpy<2.0，但其原生扩展不链接
+# numpy C-API（用 buffer protocol），numpy 2.x 运行正常。override 以解除与
+# pin==3.9.0 (numpy>=2.2) 的死锁。
+override-dependencies = [
+    "pyorbbecsdk2>=2.1.2; python_version >= '3.10'",
+    "numpy>=2.2,<2.3",
+    "open3d>=0.19",
+    # pin 3.9.0 声明 cmeel-urdfdom>=4，但其 native 库按 urdfdom 4.x ABI 链接
+    # (liburdfdom_*.so.4.0)，urdfdom 6 未提供该 SONAME。pin 到 4.0.x。
+    "cmeel-urdfdom==4.0.1",
+    # pinocchio 3.9 wheel 链接 libtinyxml2.so.10（upstream tinyxml2 10.x）；
+    # cmeel-tinyxml2 11 只提供 .so.11，需固定 10.0.0。
+    "cmeel-tinyxml2==10.0.0",
+]
+# torch XPU wheels are ~1.5 GB; keep a warm cache across retries
+cache-dir = "~/.cache/uv"

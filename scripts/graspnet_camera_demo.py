@@ -67,6 +67,7 @@ def parse_args() -> argparse.Namespace:
         default="final",
         help="Open3D grasp set: final, bbox, or pre-bbox",
     )
+    parser.add_argument("--device", default=None, help="torch device for GraspNet (xpu, cuda, cpu)")
     return parser.parse_args()
 
 
@@ -84,7 +85,11 @@ def main() -> None:
     target_margin_px = int(graspnet_cfg.get("target_margin_px", 12))
     target_expand_ratio = float(graspnet_cfg.get("target_expand_ratio", 1.0))
 
-    net = graspnet_utils.build_net(str(checkpoint), graspnet_utils.DEFAULT_NUM_VIEW)
+    net = graspnet_utils.build_net(
+        str(checkpoint),
+        graspnet_utils.DEFAULT_NUM_VIEW,
+        device=graspnet_cfg.get("device") or args.device,
+    )
     yolo_model, yolo_opts = load_yolo(cfg, project_root=PROJECT_ROOT)
     cam = make_camera(cfg)
     vis: Optional[graspnet_utils.Open3DGraspWindow] = None

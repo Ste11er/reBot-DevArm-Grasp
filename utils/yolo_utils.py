@@ -10,9 +10,9 @@ import cv2
 import numpy as np
 
 try:
-    from .common_utils import class_name, clip_bbox, detection_count, tensor_to_numpy
-except ImportError:  
-    from common_utils import class_name, clip_bbox, detection_count, tensor_to_numpy
+    from .common_utils import class_name, clip_bbox, detection_count, resolve_torch_device, tensor_to_numpy
+except ImportError:
+    from common_utils import class_name, clip_bbox, detection_count, resolve_torch_device, tensor_to_numpy
 
 
 @dataclass
@@ -64,7 +64,11 @@ def load_yolo(
     det_cfg = cfg.get("detection", {})
     model_name = str(model_override or yolo_cfg.get("model_name", "yoloe-26s-seg.pt"))
     model_path = resolve_yolo_model_path(model_name, project_root)
-    device = device_override or yolo_cfg.get("device", "cpu")
+    device = device_override or yolo_cfg.get("device") or "auto"
+    if device == "auto":
+        device = str(resolve_torch_device())
+    elif device == "xpu" and not resolve_torch_device("xpu").type == "xpu":
+        device = "cpu"
     conf = float(conf_override if conf_override is not None else det_cfg.get("conf_threshold", 0.25))
     iou = float(iou_override if iou_override is not None else det_cfg.get("iou_threshold", 0.45))
     custom_classes = list(yolo_cfg.get("custom_classes", []))
@@ -209,10 +213,13 @@ def detect_objects(
     color_bgr: np.ndarray,
     yolo_opts: dict[str, Any],
 ) -> tuple[list[Any], list[YoloDetection]]:
+    device = yolo_opts.get("device", "cpu")
+    if device == "auto":
+        device = str(resolve_torch_device())
     results = model.predict(
         color_bgr,
         verbose=False,
-        device=yolo_opts.get("device", "cpu"),
+        device=device,
         conf=float(yolo_opts.get("conf", 0.25)),
         iou=float(yolo_opts.get("iou", 0.45)),
     )

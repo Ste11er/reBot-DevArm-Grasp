@@ -424,6 +424,7 @@ python scripts/grasp.py --target-class "light blue coffee cup"
 | `camera.type` | `realsense_d435i`<br/>`realsense_d405`<br/>`orbbec_gemini2` | **相机类型**：指定当前系统连接的相机硬件。 |
 | `camera.serial` | `string` / `null` | **设备序列号**：指定具体的设备 SN 号。填写 `null` 表示默认使用系统检测到的第一台可用设备。 |
 | `calibration.aruco.marker_length_m` | `float` | **ArUco 边长**：手眼标定所使用的 ArUco 标定码实际物理边长，单位为**米 (m)**。 |
+| `calibration.hand_eye_mode` | `eye_in_hand`<br/>`eye_to_hand` | **手眼标定模式**：`eye_in_hand` — 相机安装在机械臂末端随臂运动（标定板固定）；`eye_to_hand` — 相机固定在桌面/基座观察机械臂（标定板装在夹爪上）。必须与实际安装方式一致。 |
 | `calibration.hand_eye_compensation_m` | `array` | **手眼标定平移补偿**：手眼标定完成后，在**机器人基坐标系**下执行的 XYZ 手动平移补偿（格式为 `[X, Y, Z]`），单位为**米 (m)**。若三项全为 `0.0`，则补偿矩阵为单位矩阵。 |
 
 ---

@@ -48,6 +48,11 @@ from graspnet import GraspNet, pred_decode  # noqa: E402
 from graspnetAPI import Grasp, GraspGroup  # noqa: E402
 
 try:
+    from .common_utils import resolve_torch_device
+except ImportError:
+    from common_utils import resolve_torch_device
+
+try:
     from .transforms import graspnet_rotation_to_rebot_tcp_rotation, transform_grasp_pose_to_base_with_retreat
 except ImportError:
     from transforms import graspnet_rotation_to_rebot_tcp_rotation, transform_grasp_pose_to_base_with_retreat
@@ -139,10 +144,13 @@ def resolve_checkpoint_path(
     return graspnet_root / "checkpoints" / checkpoint_path
 
 
-def build_net(checkpoint_path: str | Path, num_view: int = DEFAULT_NUM_VIEW) -> GraspNet:
+def build_net(
+    checkpoint_path: str | Path,
+    num_view: int = DEFAULT_NUM_VIEW,
+    device: Optional[str] = None,
+) -> GraspNet:
     checkpoint_path = resolve_checkpoint_path(str(checkpoint_path))
-    if not torch.cuda.is_available():
-        raise RuntimeError("GraspNet pointnet2 operators require CUDA, but torch.cuda is unavailable.")
+    device = resolve_torch_device(device)
 
     net = GraspNet(
         input_feature_dim=0,
@@ -154,17 +162,26 @@ def build_net(checkpoint_path: str | Path, num_view: int = DEFAULT_NUM_VIEW) -> 
         hmax_list=[0.01, 0.02, 0.03, 0.04],
         is_training=False,
     )
-    device = torch.device("cuda:0")
+    if device.type == "xpu":
+        print("[INFO] GraspNet on Intel XPU via pure-PyTorch pointnet2 ops (no CUDA build needed).")
+    elif device.type == "cpu":
+        # GraspNet is launch-bound (thousands of tiny kernels, batch=1):
+        # fewer torch threads beat the default; measured optimum is ~6 on a
+        # 22-core machine (4 threads: 1.84s, 6: 1.63s, 16: 1.96s, 22: 2.89s).
+        torch.set_num_threads(min(6, max(1, os.cpu_count() or 1) // 4))
+        print(f"[INFO] GraspNet on CPU with {torch.get_num_threads()} torch threads "
+              "(launch-bound workload; more threads make it slower).")
     net.to(device)
 
-    checkpoint = torch.load(str(checkpoint_path), map_location=device)
+    checkpoint = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
     net.load_state_dict(checkpoint["model_state_dict"])
     net.eval()
-    print(f"Loaded checkpoint {checkpoint_path} (epoch: {checkpoint['epoch']})")
+    print(f"Loaded checkpoint {checkpoint_path} (epoch: {checkpoint['epoch']}) on {device}")
     return net
 
 
 def build_end_points(
+    net: GraspNet,
     color_bgr: np.ndarray,
     depth_mm: np.ndarray,
     K: np.ndarray,
@@ -201,7 +218,9 @@ def build_end_points(
         )
 
     end_points = {
-        "point_clouds": torch.from_numpy(cloud_masked[idxs].astype(np.float32)[np.newaxis]).cuda(non_blocking=True),
+        "point_clouds": torch.from_numpy(cloud_masked[idxs].astype(np.float32)[np.newaxis]).to(
+            next(net.parameters()).device, non_blocking=True
+        ),
         "cloud_colors": color_masked[idxs],
     }
 
@@ -218,7 +237,7 @@ def infer_grasps(
     collision_thresh: float,
     voxel_size: float = DEFAULT_VOXEL_SIZE,
 ) -> tuple[GraspGroup, dict[str, int]]:
-    with torch.no_grad():
+    with torch.inference_mode():
         end_points = net(end_points)
         grasp_preds = pred_decode(end_points)
 
@@ -457,7 +476,7 @@ def infer_frame(
         target_label = f"{selected_target.class_name} {selected_target.conf:.2f}"
 
     tic = time.time()
-    end_points, o3d_cloud, raw_cloud = build_end_points(color_bgr, depth_mm, K, num_point, min_depth, max_depth)
+    end_points, o3d_cloud, raw_cloud = build_end_points(net, color_bgr, depth_mm, K, num_point, min_depth, max_depth)
     grasps, counts = infer_grasps(net, end_points, raw_cloud, collision_thresh, voxel_size)
     pre_bbox_grasps = copy_grasp_group(grasps)
     if selected_target is not None:

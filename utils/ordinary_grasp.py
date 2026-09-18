@@ -9,10 +9,10 @@ import cv2
 import numpy as np
 
 try:
-    from .common_utils import detection_count, tensor_to_numpy
+    from .common_utils import detection_count, resolve_torch_device, tensor_to_numpy
     from .transforms import grasp_axes_to_rebot_tcp_rotation
-except ImportError:  
-    from common_utils import detection_count, tensor_to_numpy
+except ImportError:
+    from common_utils import detection_count, resolve_torch_device, tensor_to_numpy
     from transforms import grasp_axes_to_rebot_tcp_rotation
 
 
