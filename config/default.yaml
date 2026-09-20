@@ -14,7 +14,7 @@ calibration:
   # 手眼标定模式：
   #   eye_in_hand — 相机装在机械臂末端，随臂运动（标定板固定）
   #   eye_to_hand — 相机固定在桌面/基座（标定板装在末端随臂运动）
-  hand_eye_mode: "eye_to_hand"
+  hand_eye_mode: "eye_in_hand"
   hand_eye_compensation_m:
     x: 0.00
     y: 0.0

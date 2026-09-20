@@ -301,6 +301,10 @@ def main():
                         help="manual mode: gravity compensation; move the arm by hand and press Enter to capture")
     parser.add_argument("--mode", choices=("eye_in_hand", "eye_to_hand"), default=None,
                         help="hand-eye mode; default: calibration.hand_eye_mode from config/default.yaml")
+    parser.add_argument("--debug", action="store_true",
+                        help="auto mode only: record every command/feedback tick, guard "
+                             "trajectories before dispatch, kill violent joint jumps "
+                             "(writes Log/handeye_debug_<ts>/)")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -347,9 +351,11 @@ def main():
         "finished": False,
     }
     result_saved = False
+    dbg = None
 
     print(f"\n=== Hand-Eye Calibration ({he_mode}) ===")
-    print(f"Camera: {cam_type}  |  Mode: {mode_str}  |  Solver: {he_method}")
+    print(f"Camera: {cam_type}  |  Mode: {mode_str}  |  Solver: {he_method}"
+          + ("  |  DEBUG GUARDS ON" if args.debug and not args.manual else ""))
     print(f"ArUco size: {aruco_cfg['marker_length_m']*100:.0f}cm  |  Output: {save_path}")
     print()
 
@@ -397,6 +403,10 @@ def main():
                 f"[Robot] Auto mode ready, control mode: {selected.controller_mode}. "
                 f"{len(CALIB_POSES_XYZ)} preset poses will be traversed."
             )
+            if args.debug:
+                from handeye_debug import attach_debug
+                dbg = attach_debug(controller, rebotarm, root)
+                print(f"[Robot] Debug guards active, data -> {dbg.log_dir}")
     except Exception as e:
         try:
             cam.close()
@@ -682,6 +692,8 @@ def main():
     finally:
         cv2.destroyAllWindows()
         cam.close()
+        if dbg is not None:
+            dbg.finalize()
         if gc_ctrl is not None:
             gc_ctrl.safe_home()
         elif controller is not None:
