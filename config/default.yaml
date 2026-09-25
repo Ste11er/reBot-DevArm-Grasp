@@ -7,7 +7,7 @@ camera:
 
 calibration:
   aruco:
-    marker_length_m: 0.097
+    marker_length_m: 0.035
     dict_id: 0
     target_marker_id: 0
   hand_eye_method: TSAI
